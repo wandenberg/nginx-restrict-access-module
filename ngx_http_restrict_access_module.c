@@ -343,11 +343,11 @@ ngx_str_t *
 ngx_http_restrict_access_get_host_ip(ngx_str_t *hostname, struct sockaddr *addr, ngx_pool_t *pool)
 {
     struct hostent     *host;
-    char                host_ip[INET_ADDRSTRLEN];
+    char                host_ip[INET6_ADDRSTRLEN];
     ngx_str_t          *ip = NULL;
 
     if ((host = gethostbyname2((char *) hostname->data, addr->sa_family)) != NULL) {
-        if (inet_ntop(addr->sa_family, host->h_addr_list[0], host_ip, INET_ADDRSTRLEN) != NULL) {
+        if (inet_ntop(addr->sa_family, host->h_addr_list[0], host_ip, INET6_ADDRSTRLEN) != NULL) {
             if ((ip = ngx_http_restrict_access_create_str(pool, ngx_strlen(host_ip))) != NULL) {
                 ngx_memcpy(ip->data, host_ip, ip->len);
             }
