@@ -24,7 +24,8 @@ typedef struct {
 
 
 typedef struct {
-    ngx_array_t      *rules;     /* array of ngx_http_restrict_access_rule_t */
+    ngx_array_t                    *rules;    /* array of ngx_http_restrict_access_rule_t */
+    ngx_http_complex_value_t       *address;
 } ngx_http_restrict_access_loc_conf_t;
 
 
@@ -51,6 +52,13 @@ static ngx_command_t ngx_http_restrict_access_commands[] = {
       ngx_http_restrict_access_rule,
       NGX_HTTP_LOC_CONF_OFFSET,
       0,
+      NULL },
+
+    { ngx_string("restrict_access_address"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
+      ngx_http_set_complex_value_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_restrict_access_loc_conf_t, address),
       NULL },
 
     ngx_null_command
@@ -191,6 +199,7 @@ ngx_http_restrict_access_create_loc_conf(ngx_conf_t *cf)
     }
 
     conf->rules = NULL;
+    conf->address = NULL;
 
     return conf;
 }
@@ -204,6 +213,10 @@ ngx_http_restrict_access_merge_loc_conf(ngx_conf_t *cf, void *parent, void *chil
 
     if (conf->rules == NULL) {
         conf->rules = prev->rules;
+    }
+
+    if (conf->address == NULL) {
+        conf->address = prev->address;
     }
 
     return NGX_CONF_OK;
@@ -248,17 +261,30 @@ ngx_http_restrict_access_check_permission(ngx_http_request_t *r)
     ngx_str_t                           *hostname, *ip;
     ngx_uint_t                           i;
     ngx_http_restrict_access_rule_t     *rule;
+    ngx_str_t                            vv_address = ngx_null_string;
+    struct sockaddr                     *sockaddr = r->connection->sockaddr;
+    ngx_addr_t                           address;
+    ngx_str_t                           *addr_text = &r->connection->addr_text;
 
+    if (ralcf->address) {
+        ngx_http_complex_value(r, ralcf->address, &vv_address);
+        if (vv_address.len > 0) {
+            if (ngx_parse_addr(r->pool, &address, vv_address.data, vv_address.len) == NGX_OK) {
+                sockaddr = address.sockaddr;
+                addr_text = &vv_address;
+            }
+        }
+    }
 
-    if ((hostname = ngx_http_restrict_access_get_hostname(r->connection->sockaddr, r->pool)) != NULL) {
+    if ((hostname = ngx_http_restrict_access_get_hostname(sockaddr, r->pool)) != NULL) {
 
         rule = ralcf->rules->elts;
         for (i = 0; i < ralcf->rules->nelts; i++) {
             if (ngx_regex_exec(rule[i].host_regexp, hostname, NULL, 0) != NGX_REGEX_NO_MATCHED) {
                 if (rule[i].reverse_dns_check) {
 
-                    if ((ip = ngx_http_restrict_access_get_host_ip(hostname, r->connection->sockaddr, r->pool)) != NULL) {
-                        if (ngx_strncmp(ip->data, r->connection->addr_text.data, r->connection->addr_text.len) == 0) {
+                    if ((ip = ngx_http_restrict_access_get_host_ip(hostname, sockaddr, r->pool)) != NULL) {
+                        if (ngx_strncmp(ip->data, addr_text->data, addr_text->len) == 0) {
                             return (rule[i].deny) ? NGX_HTTP_FORBIDDEN : NGX_OK;
                         }
                     } else {
