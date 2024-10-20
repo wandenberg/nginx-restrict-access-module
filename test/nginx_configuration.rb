@@ -32,6 +32,8 @@ http {
     listen        <%= nginx_port %>;
     server_name   <%= nginx_host %>;
 
+    root <%= nginx_tests_tmp_dir %>;
+
     <%= write_directive("restrict_access_address", restrict_access_address) %>
 
     location /denys_first {
